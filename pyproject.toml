@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arabicrag"
+version = "0.1.0"
+description = "Production Arabic RAG toolkit for Oracle Cloud Infrastructure"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+keywords = ["arabic", "nlp", "rag", "oracle", "oci", "generative-ai", "vector-search"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: Arabic",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=1.24",
+    "scikit-learn>=1.3",
+    "rank-bm25>=0.2.2",
+]
+
+[project.optional-dependencies]
+oci = ["oci>=2.120"]
+hf = ["sentence-transformers>=2.5", "torch>=2.0"]
+dev = ["pytest>=7.0", "ruff>=0.4"]
+all = ["arabicrag[oci,hf,dev]"]
+
+[project.urls]
+Homepage = "https://github.com/YOUR-USERNAME/oci-arabic-rag-toolkit"
+Issues = "https://github.com/YOUR-USERNAME/oci-arabic-rag-toolkit/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
