@@ -1,14 +1,14 @@
 """
 Benchmark runner.
 
-Compares retrievers on the Arabic regulatory eval set. Designed so each
-retriever plugs in via the same interface.
+Compares retrievers on Arabic eval sets across multiple domains.
 
 Usage:
-    python benchmarks/run_benchmark.py
+    python benchmarks/run_benchmark.py                       # banking (default)
+    python benchmarks/run_benchmark.py --corpus legal        # legal corpus
+    python benchmarks/run_benchmark.py --corpus all          # all corpora
     python benchmarks/run_benchmark.py --retriever bm25
-    python benchmarks/run_benchmark.py --retriever hybrid --k 5
-    python benchmarks/run_benchmark.py --retriever oci  # requires creds
+    python benchmarks/run_benchmark.py --retriever oci       # requires creds
 
 Results are written to benchmarks/results/ as JSON + a markdown table.
 """
@@ -41,14 +41,23 @@ from benchmarks.metrics import EvalRecord, aggregate  # noqa: E402
 DATA_DIR = ROOT / "benchmarks" / "data"
 RESULTS_DIR = ROOT / "benchmarks" / "results"
 
+# Registered corpora — add new domains by dropping a {name}_corpus.json
+# and {name}_eval_set.json into benchmarks/data/ and adding an entry here.
+CORPORA = {
+    "banking": ("sample_corpus.json", "eval_set.json"),
+    "legal": ("legal_corpus.json", "legal_eval_set.json"),
+}
 
-def load_corpus() -> list[dict]:
-    with open(DATA_DIR / "sample_corpus.json", encoding="utf-8") as f:
+
+def load_corpus(name: str = "banking") -> list[dict]:
+    corpus_file, _ = CORPORA[name]
+    with open(DATA_DIR / corpus_file, encoding="utf-8") as f:
         return json.load(f)
 
 
-def load_eval_set() -> list[dict]:
-    with open(DATA_DIR / "eval_set.json", encoding="utf-8") as f:
+def load_eval_set(name: str = "banking") -> list[dict]:
+    _, eval_file = CORPORA[name]
+    with open(DATA_DIR / eval_file, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -191,31 +200,44 @@ def main():
         choices=["tfidf", "bm25", "hybrid", "oci", "all"],
         default="all",
     )
+    parser.add_argument(
+        "--corpus",
+        choices=[*CORPORA.keys(), "all"],
+        default="banking",
+        help="Which corpus to benchmark on.",
+    )
     parser.add_argument("--k", type=int, default=10)
     args = parser.parse_args()
 
-    corpus = load_corpus()
-    queries = load_eval_set()
-    chunks = prep_chunks(corpus)
-    print(f"Loaded {len(corpus)} documents → {len(chunks)} chunks; {len(queries)} queries.\n")
-
+    corpus_names = list(CORPORA.keys()) if args.corpus == "all" else [args.corpus]
     retrievers = ["tfidf", "bm25", "hybrid"] if args.retriever == "all" else [args.retriever]
-    all_results = {}
 
-    for r in retrievers:
-        try:
-            records, perf = RUNNERS[r](chunks, queries, args.k)
-            metrics = aggregate(records)
-            all_results[r] = {**metrics, **perf}
-            print(f"=== {r.upper()} ===")
-            for kk, vv in all_results[r].items():
-                if isinstance(vv, float):
-                    print(f"  {kk}: {vv:.4f}")
-                else:
-                    print(f"  {kk}: {vv}")
-            print()
-        except Exception as e:
-            print(f"[skipped {r}: {e}]\n")
+    all_results: dict = {}
+
+    for corpus_name in corpus_names:
+        corpus = load_corpus(corpus_name)
+        queries = load_eval_set(corpus_name)
+        chunks = prep_chunks(corpus)
+        print(f"\n{'═' * 60}")
+        print(f"  Corpus: {corpus_name.upper()}  "
+              f"({len(corpus)} docs → {len(chunks)} chunks; {len(queries)} queries)")
+        print(f"{'═' * 60}\n")
+
+        all_results[corpus_name] = {}
+        for r in retrievers:
+            try:
+                records, perf = RUNNERS[r](chunks, queries, args.k)
+                metrics = aggregate(records)
+                all_results[corpus_name][r] = {**metrics, **perf}
+                print(f"=== {r.upper()} on {corpus_name} ===")
+                for kk, vv in all_results[corpus_name][r].items():
+                    if isinstance(vv, float):
+                        print(f"  {kk}: {vv:.4f}")
+                    else:
+                        print(f"  {kk}: {vv}")
+                print()
+            except Exception as e:
+                print(f"[skipped {r}: {e}]\n")
 
     RESULTS_DIR.mkdir(exist_ok=True)
     with open(RESULTS_DIR / "results.json", "w", encoding="utf-8") as f:
@@ -225,33 +247,48 @@ def main():
     print(f"Results written to {RESULTS_DIR}/")
 
 
-def write_markdown_table(results: dict) -> None:
-    if not results:
+def write_markdown_table(results_by_corpus: dict) -> None:
+    if not results_by_corpus:
         return
-    rows = list(results.values())
-    keys = ["retriever", "precision@5", "recall@5", "ndcg@5", "mrr", "mean_latency_ms"]
+
+    keys = ["retriever", "precision@1", "precision@5", "recall@5", "ndcg@5", "mrr", "mean_latency_ms"]
     header = "| " + " | ".join(keys) + " |"
     sep = "| " + " | ".join(["---"] * len(keys)) + " |"
+
     lines = [
         "# Benchmark results",
         "",
-        f"Corpus: {len(load_corpus())} synthetic regulatory docs · "
-        f"Queries: {len(load_eval_set())} · k=10",
+        "Cross-domain Arabic retrieval benchmarks. Same toolkit, different corpora.",
         "",
-        header,
-        sep,
     ]
-    for row in rows:
-        cells = []
-        for key in keys:
-            v = row.get(key, "")
-            if isinstance(v, float):
-                cells.append(f"{v:.4f}")
-            else:
-                cells.append(str(v))
-        lines.append("| " + " | ".join(cells) + " |")
-    lines.append("")
-    lines.append("Generated by `python benchmarks/run_benchmark.py`.")
+
+    for corpus_name, results in results_by_corpus.items():
+        if not results:
+            continue
+        try:
+            n_docs = len(load_corpus(corpus_name))
+            n_queries = len(load_eval_set(corpus_name))
+        except Exception:
+            n_docs, n_queries = "?", "?"
+
+        lines.append(f"## {corpus_name.title()}")
+        lines.append("")
+        lines.append(f"_{n_docs} synthetic Arabic documents · {n_queries} queries · k=10_")
+        lines.append("")
+        lines.append(header)
+        lines.append(sep)
+        for row in results.values():
+            cells = []
+            for key in keys:
+                v = row.get(key, "")
+                if isinstance(v, float):
+                    cells.append(f"{v:.4f}")
+                else:
+                    cells.append(str(v))
+            lines.append("| " + " | ".join(cells) + " |")
+        lines.append("")
+
+    lines.append("Generated by `python benchmarks/run_benchmark.py --corpus all`.")
 
     with open(RESULTS_DIR / "BENCHMARK.md", "w", encoding="utf-8") as f:
         f.write("\n".join(lines))

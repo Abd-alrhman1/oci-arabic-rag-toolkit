@@ -20,30 +20,6 @@ This toolkit ships the utilities and the benchmarks. It's designed as a
 canonical starting point for Arabic enterprise AI projects on OCI —
 banking, government services, healthcare, telecom.
 
-## Background
-
-This toolkit grew out of my graduation project: a RAG-based assistant
-for Jordanian law offices that retrieves relevant statutory text and
-helps with quick legal reasoning in Arabic.
-
-The project shipped, but retrieval quality disappointed me in a specific
-way. The Arabic embeddings I tried — off-the-shelf multilingual encoders
-— didn't produce useful semantic representations. Queries that were
-obviously about the same legal concept landed in different parts of the
-vector space. Morphological variants of the same root word looked
-unrelated to the model. Diacritics broke matches. Chunking strategies
-built for English split legal articles mid-clause, destroying the
-section context lawyers actually search for.
-
-I shipped what I had, but left the project with a backlog of *things I
-wish I'd built first*. This toolkit is that backlog: the normalization,
-the section-aware chunking, the benchmark, and the honest comparison of
-which retrievers actually work on Arabic legal and regulatory text.
-
-The benchmark finding that TF-IDF on character n-grams beats BM25 word
-tokenization on Arabic isn't theoretical — it's the kind of result that
-would have saved me weeks on the graduation project.
-
 ## What's inside
 
 - **Arabic-aware utilities** — RTL-safe chunking with section detection
@@ -61,29 +37,46 @@ would have saved me weeks on the graduation project.
 
 ## Headline benchmark result
 
-Synthetic Arabic banking-regulation corpus, 13 documents → 25 chunks,
-25 queries, document-level retrieval metrics:
+The same toolkit, run on two different Arabic corpora — banking
+regulations and legal text — with no code changes between runs:
 
-| Retriever          | P@1   | R@5   | nDCG@5 | MRR   | Latency (mean) |
-| ------------------ | :---: | :---: | :----: | :---: | :------------: |
-| TF-IDF (char 3-5)  | 0.92  | 1.00  | 0.97   | 0.96  | 0.4 ms         |
-| BM25               | 0.72  | 0.92  | 0.83   | 0.80  | 0.1 ms         |
-| Hybrid (α=0.6)     | 0.88  | 1.00  | 0.95   | 0.93  | 0.6 ms         |
+### Banking (13 docs · 25 queries)
 
-**Surprising finding:** TF-IDF on character n-grams beats BM25 word
-tokenization on Arabic regulatory text — character n-grams handle
-Arabic morphology gracefully, where the same root (e.g. ك-ت-ب) appears
-in many surface forms (يكتب, كاتب, كتاب, مكتوب). Word-level BM25
-treats these as unrelated tokens.
+| Retriever          | P@1   | R@5   | nDCG@5 | MRR   | Latency |
+| ------------------ | :---: | :---: | :----: | :---: | :-----: |
+| TF-IDF (char 3-5)  | 0.92  | 1.00  | 0.97   | 0.96  | 0.6 ms  |
+| BM25               | 0.72  | 0.92  | 0.83   | 0.80  | 0.1 ms  |
+| Hybrid (α=0.6)     | 0.88  | 1.00  | 0.95   | 0.93  | 0.8 ms  |
 
-This matters for production: don't assume English RAG defaults transfer.
-Run the benchmark on your corpus before committing to a retriever.
+### Legal (13 docs · 25 queries)
+
+| Retriever          |  P@1   | R@5   | nDCG@5 | MRR   | Latency |
+| ------------------ | :----: | :---: | :----: | :---: | :-----: |
+| TF-IDF (char 3-5)  | **0.96** | 1.00 | 0.98 | 0.97  | 0.6 ms  |
+| BM25               | 0.56   | 0.84  | 0.70   | 0.66  | 0.1 ms  |
+| Hybrid (α=0.6)     | 0.80   | 1.00  | 0.92   | 0.89  | 0.7 ms  |
+
+**Two findings that matter for production:**
+
+1. **TF-IDF on character n-grams beats BM25 word tokenization on Arabic.**
+   Arabic morphology punishes word-level approaches because the same
+   root (e.g. ك-ت-ب) appears in many surface forms (يكتب, كاتب, كتاب,
+   مكتوب) that word tokenizers treat as unrelated.
+
+2. **The gap widens on more morphologically rich domains.** Legal
+   Arabic uses more classical, formal language with deeper morphological
+   variation than banking — and the TF-IDF advantage grows from
+   +20 points (banking) to +40 points (legal) at P@1.
+
+This matters for production: don't assume English RAG defaults
+transfer. Run the benchmark on your corpus before committing to a
+retriever.
 
 Reproduce locally:
 
 ```bash
 pip install -r requirements.txt
-python benchmarks/run_benchmark.py
+python benchmarks/run_benchmark.py --corpus all
 ```
 
 Full results in [`benchmarks/results/BENCHMARK.md`](benchmarks/results/BENCHMARK.md).
@@ -91,7 +84,7 @@ Full results in [`benchmarks/results/BENCHMARK.md`](benchmarks/results/BENCHMARK
 ## Quickstart
 
 ```bash
-git clone https://github.com/Abd-alrhman1/oci-arabic-rag-toolkit
+git clone https://github.com/YOUR-USERNAME/oci-arabic-rag-toolkit
 cd oci-arabic-rag-toolkit
 pip install -r requirements.txt
 
@@ -209,13 +202,30 @@ multi-turn workflows. Reference SQL is included in
 └── docs/                  # design notes, methodology
 ```
 
-## Notes on the corpus
+## Notes on the corpora
 
-The included corpus (`benchmarks/data/sample_corpus.json`) is **synthetic**
-text written by the project author to illustrate the retrieval pipeline
-on Arabic regulatory-style text. It's not sourced from any specific
-regulator. To benchmark on real regulations, plug in publicly available
-documents from your target jurisdiction.
+Both shipped corpora are **synthetic** — Arabic text written by the
+project author in the style of banking regulations and legal statutes,
+with `المادة N:` section markers. They illustrate the pipeline without
+the licensing complications of redistributing real government or
+regulator publications.
+
+- `benchmarks/data/sample_corpus.json` — banking regulation style
+  (capital adequacy, AML, KYC, liquidity, etc.)
+- `benchmarks/data/legal_corpus.json` — legal style (employment,
+  civil contracts, lease, inheritance, torts, etc.)
+
+The legal corpus was added specifically to test whether the toolkit
+generalizes across domains — and to mirror the domain of the
+graduation project this toolkit grew out of (a RAG-based legal
+assistant for Jordanian law offices, see Background above). The
+results confirm both: same code, different domain, strong numbers,
+and the morphological gap between TF-IDF and BM25 widens on the
+more classically-worded legal text.
+
+To benchmark on real publicly available Arabic documents, drop them
+into `benchmarks/data/` as a JSON file matching the same schema and
+add an entry to the `CORPORA` registry in `run_benchmark.py`.
 
 ## Contributing
 
