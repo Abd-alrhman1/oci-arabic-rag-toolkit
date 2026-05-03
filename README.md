@@ -20,6 +20,30 @@ This toolkit ships the utilities and the benchmarks. It's designed as a
 canonical starting point for Arabic enterprise AI projects on OCI —
 banking, government services, healthcare, telecom.
 
+## Background
+
+This toolkit grew out of my graduation project: a RAG-based assistant
+for Jordanian law offices that retrieves relevant statutory text and
+helps with quick legal reasoning in Arabic.
+
+The project shipped, but retrieval quality disappointed me in a specific
+way. The Arabic embeddings I tried — off-the-shelf multilingual encoders
+— didn't produce useful semantic representations. Queries that were
+obviously about the same legal concept landed in different parts of the
+vector space. Morphological variants of the same root word looked
+unrelated to the model. Diacritics broke matches. Chunking strategies
+built for English split legal articles mid-clause, destroying the
+section context lawyers actually search for.
+
+I shipped what I had, but left the project with a backlog of *things I
+wish I'd built first*. This toolkit is that backlog: the normalization,
+the section-aware chunking, the benchmark, and the honest comparison of
+which retrievers actually work on Arabic legal and regulatory text.
+
+The benchmark finding that TF-IDF on character n-grams beats BM25 word
+tokenization on Arabic isn't theoretical — it's the kind of result that
+would have saved me weeks on the graduation project.
+
 ## What's inside
 
 - **Arabic-aware utilities** — RTL-safe chunking with section detection
@@ -67,7 +91,7 @@ Full results in [`benchmarks/results/BENCHMARK.md`](benchmarks/results/BENCHMARK
 ## Quickstart
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/oci-arabic-rag-toolkit
+git clone https://github.com/Abd-alrhman1/oci-arabic-rag-toolkit
 cd oci-arabic-rag-toolkit
 pip install -r requirements.txt
 
